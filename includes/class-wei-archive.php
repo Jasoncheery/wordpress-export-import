@@ -11,7 +11,7 @@ class WEI_Archive {
 	/**
 	 * Create ZIP archive
 	 */
-	public function create_zip( $source_paths, $destination, $manifest = array() ) {
+	public function create_zip( $source_paths, $destination, $manifest = array(), $exclude_paths = array() ) {
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			throw new Exception( 'ZipArchive class not available' );
 		}
@@ -27,9 +27,14 @@ class WEI_Archive {
 
 		foreach ( $source_paths as $local_name => $source_path ) {
 			if ( is_file( $source_path ) ) {
-				$zip->addFile( $source_path, $local_name );
+				if ( ! $this->is_excluded( $source_path, $exclude_paths ) ) {
+					$zip->addFile( $source_path, $local_name );
+					if ( method_exists( $zip, 'setCompressionName' ) ) {
+						$zip->setCompressionName( $local_name, ZipArchive::CM_STORE );
+					}
+				}
 			} elseif ( is_dir( $source_path ) ) {
-				$this->add_directory_to_zip( $zip, $source_path, $local_name );
+				$this->add_directory_to_zip( $zip, $source_path, $local_name, $exclude_paths );
 			}
 		}
 
@@ -39,7 +44,7 @@ class WEI_Archive {
 	/**
 	 * Add directory recursively to ZIP
 	 */
-	private function add_directory_to_zip( $zip, $dir_path, $local_base ) {
+	private function add_directory_to_zip( $zip, $dir_path, $local_base, $exclude_paths = array() ) {
 		$dir_path = rtrim( $dir_path, '/' );
 		$local_base = rtrim( $local_base, '/' );
 
@@ -50,6 +55,9 @@ class WEI_Archive {
 
 		foreach ( $iterator as $item ) {
 			$item_path = $item->getPathname();
+			if ( $this->is_excluded( $item_path, $exclude_paths ) ) {
+				continue;
+			}
 			$relative_path = substr( $item_path, strlen( $dir_path ) + 1 );
 			$local_path = $local_base . '/' . $relative_path;
 
@@ -57,8 +65,25 @@ class WEI_Archive {
 				$zip->addEmptyDir( $local_path );
 			} else {
 				$zip->addFile( $item_path, $local_path );
+				if ( method_exists( $zip, 'setCompressionName' ) ) {
+					$zip->setCompressionName( $local_path, ZipArchive::CM_STORE );
+				}
 			}
 		}
+	}
+
+	/**
+	 * Check if a path should be excluded from archive.
+	 */
+	private function is_excluded( $path, $exclude_paths ) {
+		$normalized_path = wp_normalize_path( realpath( $path ) ?: $path );
+		foreach ( $exclude_paths as $exclude_path ) {
+			$normalized_exclude = wp_normalize_path( realpath( $exclude_path ) ?: $exclude_path );
+			if ( strpos( $normalized_path, untrailingslashit( $normalized_exclude ) ) === 0 ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -110,20 +135,4 @@ class WEI_Archive {
 		return $manifest;
 	}
 
-	/**
-	 * Stream ZIP download to browser
-	 */
-	public function stream_download( $file_path, $download_name ) {
-		if ( ! file_exists( $file_path ) ) {
-			throw new Exception( 'File not found' );
-		}
-
-		header( 'Content-Type: application/zip' );
-		header( 'Content-Disposition: attachment; filename="' . $download_name . '"' );
-		header( 'Content-Length: ' . filesize( $file_path ) );
-		header( 'Cache-Control: no-cache, must-revalidate' );
-		header( 'Pragma: no-cache' );
-
-		readfile( $file_path );
-	}
 }

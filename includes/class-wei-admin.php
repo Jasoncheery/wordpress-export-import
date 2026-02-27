@@ -46,6 +46,16 @@ class WEI_Admin {
 			<div class="card">
 				<h2><?php esc_html_e( 'Export Site', 'wordpress-export-import' ); ?></h2>
 				<p><?php esc_html_e( 'Export your entire WordPress site including database, plugins, themes, uploads, and users.', 'wordpress-export-import' ); ?></p>
+				<?php $last_export = get_option( 'wei_last_export', array() ); ?>
+				<?php if ( ! empty( $last_export['file_url'] ) && ! empty( $last_export['file_name'] ) && ! empty( $last_export['file_path'] ) && file_exists( $last_export['file_path'] ) ) : ?>
+					<p>
+						<strong><?php esc_html_e( 'Latest export:', 'wordpress-export-import' ); ?></strong>
+						<a class="button button-secondary" href="<?php echo esc_url( $last_export['file_url'] ); ?>" target="_blank" rel="noopener">
+							<?php esc_html_e( 'Download ZIP', 'wordpress-export-import' ); ?>
+						</a>
+						<code><?php echo esc_html( $last_export['file_name'] ); ?></code>
+					</p>
+				<?php endif; ?>
 				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 					<?php wp_nonce_field( 'wei_export_action', 'wei_export_nonce' ); ?>
 					<input type="hidden" name="action" value="wei_export">
@@ -81,11 +91,15 @@ class WEI_Admin {
 
 		try {
 			$exporter = new WEI_Exporter();
-			$exporter->export();
-			exit;
+			$result = $exporter->export();
+			update_option( 'wei_last_export', $result, false );
+			$this->set_notice( 'success', __( 'Export completed. Use the "Download ZIP" button on this page.', 'wordpress-export-import' ) );
 		} catch ( Exception $e ) {
-			wp_die( esc_html( $e->getMessage() ) );
+			$this->set_notice( 'error', $e->getMessage() );
 		}
+
+		wp_safe_redirect( admin_url( 'tools.php?page=wei-export-import' ) );
+		exit;
 	}
 
 	public function handle_import() {

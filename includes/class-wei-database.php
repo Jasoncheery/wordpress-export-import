@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WEI_Database {
 	private $wpdb;
-	private $batch_size = 100;
+	private $batch_size = 500;
 
 	public function __construct() {
 		global $wpdb;
@@ -66,6 +66,7 @@ class WEI_Database {
 				break;
 			}
 
+			$insert_rows = array();
 			foreach ( $rows as $row ) {
 				$values = array();
 				foreach ( $row as $value ) {
@@ -75,7 +76,11 @@ class WEI_Database {
 						$values[] = "'" . $this->wpdb->_real_escape( $value ) . "'";
 					}
 				}
-				fwrite( $handle, "INSERT INTO `{$table}` VALUES (" . implode( ',', $values ) . ");\n" );
+				$insert_rows[] = '(' . implode( ',', $values ) . ')';
+			}
+
+			if ( ! empty( $insert_rows ) ) {
+				fwrite( $handle, "INSERT INTO `{$table}` VALUES " . implode( ',', $insert_rows ) . ";\n" );
 			}
 
 			$offset += $this->batch_size;

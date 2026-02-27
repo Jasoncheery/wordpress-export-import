@@ -4,6 +4,25 @@ This document tracks progress and updates for the WordPress Export Import plugin
 
 ## 2026-02-27
 
+### Hotfix: Export timeout/invalid response on shared hosting
+
+**Issue reported:**
+- Export requests failed with browser error `ERR_INVALID_RESPONSE` on long-running `admin-post.php` export requests.
+
+**Fix applied:**
+- Moved temporary export workspace from `wp-content/uploads` to `wp-content/wei-temp` to avoid recursive/self-inclusion during uploads export.
+- Moved final export ZIP output to `wp-content/wei-exports` to avoid zipping in-progress artifacts.
+- Changed export UX from direct binary streaming to admin redirect + persistent download link (`Latest export -> Download ZIP`).
+- Added export path exclusions (`wei-temp`, `wei-exports`, current temp directory) during archive generation.
+- Switched ZIP entries to `CM_STORE` (no compression) for faster archive creation on constrained hosts.
+- Optimized database export using larger batch size and multi-row `INSERT` statements for speed.
+- Added automatic rotation to keep only the latest 3 export ZIP files.
+
+**Expected impact:**
+- Lower chance of response reset/timeouts on Hostinger and similar shared hosting.
+- Faster export completion and more reliable download flow.
+- Reduced risk of runaway archive growth from accidental self-inclusion.
+
 ### Initial Development - v1.0.0
 
 **Milestone: Plugin Scaffold Complete**

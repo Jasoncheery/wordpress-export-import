@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WEI_Exporter {
 	private $temp_dir;
+	private $export_dir;
 	private $database;
 	private $archive;
 
@@ -26,19 +27,30 @@ class WEI_Exporter {
 
 		$this->check_requirements();
 		$this->temp_dir = $this->create_temp_directory();
+		$this->export_dir = $this->create_export_directory();
 
 		try {
 			$manifest = $this->build_manifest();
 			$this->export_database();
 			$source_paths = $this->collect_wp_content();
 
-			$zip_path = $this->temp_dir . '/site-export.zip';
-			$this->archive->create_zip( $source_paths, $zip_path, $manifest );
-
-			$download_name = 'wordpress-export-' . date( 'Y-m-d-His' ) . '.zip';
-			$this->archive->stream_download( $zip_path, $download_name );
+			$file_name = 'wordpress-export-' . date( 'Y-m-d-His' ) . '.zip';
+			$zip_path = trailingslashit( $this->export_dir ) . $file_name;
+			$exclude_paths = array(
+				WP_CONTENT_DIR . '/uploads/wei-temp',
+				WP_CONTENT_DIR . '/uploads/wei-exports',
+				$this->temp_dir,
+			);
+			$this->archive->create_zip( $source_paths, $zip_path, $manifest, $exclude_paths );
+			$this->cleanup_old_exports();
 
 			$this->cleanup();
+			return array(
+				'file_name' => $file_name,
+				'file_path' => $zip_path,
+				'file_url'  => content_url( 'wei-exports/' . $file_name ),
+				'size'      => filesize( $zip_path ),
+			);
 		} catch ( Exception $e ) {
 			$this->cleanup();
 			throw $e;
@@ -56,6 +68,9 @@ class WEI_Exporter {
 		$upload_dir = wp_upload_dir();
 		if ( ! wp_is_writable( $upload_dir['basedir'] ) ) {
 			throw new Exception( 'Upload directory is not writable. Please check file permissions.' );
+		}
+		if ( ! wp_is_writable( WP_CONTENT_DIR ) ) {
+			throw new Exception( 'wp-content is not writable. Please check file permissions.' );
 		}
 
 		$free_space = @disk_free_space( $upload_dir['basedir'] );
@@ -123,8 +138,7 @@ class WEI_Exporter {
 	 * Create temporary directory
 	 */
 	private function create_temp_directory() {
-		$upload_dir = wp_upload_dir();
-		$temp_base = $upload_dir['basedir'] . '/wei-temp';
+		$temp_base = WP_CONTENT_DIR . '/wei-temp';
 
 		if ( ! is_dir( $temp_base ) ) {
 			wp_mkdir_p( $temp_base );
@@ -134,6 +148,41 @@ class WEI_Exporter {
 		wp_mkdir_p( $temp_dir );
 
 		return $temp_dir;
+	}
+
+	/**
+	 * Create export directory.
+	 */
+	private function create_export_directory() {
+		$export_base = WP_CONTENT_DIR . '/wei-exports';
+		if ( ! is_dir( $export_base ) ) {
+			wp_mkdir_p( $export_base );
+		}
+		return $export_base;
+	}
+
+	/**
+	 * Keep only the latest 3 exports to save disk space.
+	 */
+	private function cleanup_old_exports() {
+		$files = glob( trailingslashit( $this->export_dir ) . 'wordpress-export-*.zip' );
+		if ( empty( $files ) || count( $files ) <= 3 ) {
+			return;
+		}
+
+		usort(
+			$files,
+			function ( $a, $b ) {
+				return filemtime( $b ) - filemtime( $a );
+			}
+		);
+
+		$old_files = array_slice( $files, 3 );
+		foreach ( $old_files as $old_file ) {
+			if ( is_file( $old_file ) ) {
+				unlink( $old_file );
+			}
+		}
 	}
 
 	/**
